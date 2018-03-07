@@ -35,6 +35,9 @@ namespace kcc_emu
             for (int idx = 0; idx < Data.Length; ++idx)
                 Data[idx] = 0;
         }
+
+        public void CopyFrom(BitField src) =>
+            Array.Copy(src.Data, Data, Data.Length);
     }
 
     class BitFieldMarshal256 : ICustomMarshaler
@@ -52,13 +55,7 @@ namespace kcc_emu
         public IntPtr MarshalManagedToNative(object ManagedObj)
         {
             var buffer = Marshal.AllocHGlobal(GetNativeDataSize());
-            var p = buffer;
-            foreach (var val in ((BitField)ManagedObj).Data)
-            {
-                Marshal.WriteByte(p, val);
-                p = p + 1;
-            }
-
+            Marshal.Copy(((BitField)ManagedObj).Data,0, buffer, GetNativeDataSize());
             return buffer;
         }
 
