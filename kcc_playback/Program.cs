@@ -1,10 +1,12 @@
-﻿using System;
+﻿using kcc_common;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace kcc_emu
+namespace kcc_playback
 {
     static class Program
     {

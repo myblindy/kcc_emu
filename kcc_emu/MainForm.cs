@@ -1,4 +1,5 @@
-﻿using kcc_emu.Properties;
+﻿using kcc_common;
+using kcc_emu.Properties;
 using MoreLinq;
 using SharpDX.DirectInput;
 using System;
@@ -17,34 +18,13 @@ using System.Windows.Forms;
 
 namespace kcc_emu
 {
-    public partial class Form1 : Form
+    public partial class MainForm : Form
     {
         static Keyboard Keyboard;
         static AutoResetEvent KeyboardEvent = new AutoResetEvent(false);
         static Thread KeyboardThread = new Thread(KeyboardThreadHandler) { IsBackground = true };
         static System.Threading.Timer KeyboardNetworkTimer = new System.Threading.Timer(KeyboardNetworkTimerHandler);
         static Socket KeyboardNetworkSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        struct KeyboardStatePacketType
-        {
-            [MarshalAs(UnmanagedType.I1)]
-            public sbyte Type;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
-            public byte[] KeyStateData;
-        }
-        class KeyboardStatePacketWrapperType
-        {
-            public KeyboardStatePacketType Packet = new KeyboardStatePacketType();
-            public BitField KeyState = new BitField(256);
-
-            public KeyboardStatePacketWrapperType()
-            {
-                Packet.Type = 2;
-                Packet.KeyStateData = KeyState.Data;
-            }
-        }
         static KeyboardStatePacketWrapperType KeyboardStatePacket = new KeyboardStatePacketWrapperType();
         static BitField LastKeyboardKeyState = new BitField(256);
 
@@ -53,60 +33,14 @@ namespace kcc_emu
         static Thread MouseThread = new Thread(MouseThreadHandler) { IsBackground = true };
         static System.Threading.Timer MouseNetworkTimer = new System.Threading.Timer(MouseNetworkTimerHandler);
         static Socket MouseNetworkSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        struct MouseStatePacketType
-        {
-            [MarshalAs(UnmanagedType.I1)]
-            public sbyte Type;
-
-            [MarshalAs(UnmanagedType.I2)]
-            public short XDelta, YDelta;
-
-            [MarshalAs(UnmanagedType.I1)]
-            public sbyte WheelDelta;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
-            public byte[] ButtonsData;
-
-            [MarshalAs(UnmanagedType.I1)]
-            public sbyte ExtraData;
-        }
-        class MouseStatePacketWrapperType
-        {
-            public MouseStatePacketType Packet = new MouseStatePacketType();
-
-            public BitField Buttons = new BitField(8);
-
-            public short XDelta
-            {
-                get => IPAddress.NetworkToHostOrder(Packet.XDelta);
-                set => Packet.XDelta = IPAddress.HostToNetworkOrder(value);
-            }
-
-            public short YDelta
-            {
-                get => IPAddress.NetworkToHostOrder(Packet.YDelta);
-                set => Packet.YDelta = IPAddress.HostToNetworkOrder(value);
-            }
-
-            public MouseStatePacketWrapperType()
-            {
-                Packet.Type = 1;
-                Packet.ButtonsData = Buttons.Data;
-            }
-        }
         static MouseStatePacketWrapperType MouseStatePacket = new MouseStatePacketWrapperType();
         static BitField LastMouseButtonState = new BitField(8);
-
-        [DllImport("user32.dll")]
-        static extern uint MapVirtualKeyEx(uint uCode, uint uMapType, IntPtr dwhkl);
-        const uint MAPVK_VSC_TO_VK = 0x01;
 
         static IPEndPoint IPEndPoint;
 
         private static void KeyboardThreadHandler()
         {
+            var setvks = new HashSet<uint>();
             while (true)
             {
                 KeyboardEvent.WaitOne();
@@ -114,14 +48,19 @@ namespace kcc_emu
 
                 lock (KeyboardThread)
                 {
-                    var setvks = state.PressedKeys.Select(w => MapVirtualKeyEx((uint)w, MAPVK_VSC_TO_VK, IntPtr.Zero)).ToHashSet();
+                    setvks.Clear();
+                    setvks.AddRange(state.PressedKeys.Select(w => Win32.MapVirtualKeyEx((uint)w, Win32.MAPVK_VSC_TO_VK, IntPtr.Zero)));
+
                     for (uint vk = 0; vk < 255; ++vk)
-                        if (setvks.Contains(vk))
-                            if (vk == 0x7B)
-                                Application.OpenForms[0].BeginInvoke(new MethodInvoker(() => Application.OpenForms[0].Close()));            // queue a close message
-                            else
-                                KeyboardStatePacket.KeyState[(int)vk] = true;
-                        else
+                        if (setvks.Contains(vk))                                            // pressed
+                        {
+                            if (!LastKeyboardKeyState[(int)vk])                             // and previously released
+                                if (vk == 0x7B)
+                                    Application.OpenForms[0].BeginInvoke(new MethodInvoker(() => Application.OpenForms[0].Close()));            // queue a close message
+                                else
+                                    KeyboardStatePacket.KeyState[(int)vk] = true;
+                        }
+                        else if (LastKeyboardKeyState[(int)vk])                             // released and previously pressed
                             KeyboardStatePacket.KeyState[(int)vk] = false;
                 }
             }
@@ -150,8 +89,10 @@ namespace kcc_emu
         {
             lock (MouseThread)
             {
-                MouseNetworkSocket.SendTo(ToBytesArray(MouseStatePacket.Packet), IPEndPoint);
+                MouseNetworkSocket.SendTo(MouseStatePacket.Packet.ToBytesArray(), IPEndPoint);
                 LastMouseButtonState.CopyFrom(MouseStatePacket.Buttons);
+                MouseStatePacket.XDelta = MouseStatePacket.YDelta = 0;
+                MouseStatePacket.Packet.WheelDelta = 0;
             }
         }
 
@@ -159,17 +100,18 @@ namespace kcc_emu
         {
             lock (KeyboardThread)
             {
-                KeyboardNetworkSocket.SendTo(ToBytesArray(KeyboardStatePacket.Packet), IPEndPoint);
+                KeyboardNetworkSocket.SendTo(KeyboardStatePacket.Packet.ToBytesArray(), IPEndPoint);
                 LastKeyboardKeyState.CopyFrom(KeyboardStatePacket.KeyState);
             }
         }
 
-        public Form1()
+        public MainForm()
         {
             InitializeComponent();
 
             var tmp = Settings.Default.DestinationIP.Split(':');
             IPEndPoint = new IPEndPoint(IPAddress.Parse(tmp[0]), int.Parse(tmp[1]));
+            Text += " [" + Settings.Default.DestinationIP + "]";
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -193,18 +135,5 @@ namespace kcc_emu
 
         private void tmrMouseMove_Tick(object sender, EventArgs e) =>
             Cursor.Position = new Point(Left + Width / 2, Top + Height / 2);
-
-        public static unsafe byte[] ToBytesArray(object o)
-        {
-            int size = Marshal.SizeOf(o);
-
-            byte[] arr = new byte[size];
-            var mem = stackalloc byte[size];
-            var memptr = new IntPtr(mem);
-            Marshal.StructureToPtr(o, memptr, true);
-            Marshal.Copy(memptr, arr, 0, size);
-
-            return arr;
-        }
     }
 }

@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace kcc_emu.Properties {
+namespace kcc_playback.Properties {
     
     
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
@@ -25,13 +25,13 @@ namespace kcc_emu.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("192.168.56.2:28456")]
-        public string DestinationIP {
+        [global::System.Configuration.DefaultSettingValueAttribute("28456")]
+        public int ListeningPort {
             get {
-                return ((string)(this["DestinationIP"]));
+                return ((int)(this["ListeningPort"]));
             }
             set {
-                this["DestinationIP"] = value;
+                this["ListeningPort"] = value;
             }
         }
     }

@@ -5,28 +5,34 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace kcc_emu
+namespace kcc_common
 {
-    class BitField
+    public class BitField
     {
         public byte[] Data { get; private set; }
-        private int DataLen;
+        public int DataLength { get; private set; }
 
         public BitField(int len)
         {
             Data = new byte[len / 8];
-            DataLen = len;
+            DataLength = len;
+        }
+
+        public BitField(byte[] data)
+        {
+            Data = data;
+            DataLength = data.Length * 8;
         }
 
         public bool this[int idx]
         {
-            get => (Data[idx / 8] & (1 << idx & 0x0F)) > 0;
+            get => (Data[idx / 8] & (1 << idx % 8)) > 0;
             set
             {
                 if (value)
-                    Data[idx / 8] |= (byte)(1 << idx & 0x0F);
+                    Data[idx / 8] |= (byte)(1 << idx % 8);
                 else
-                    Data[idx / 8] &= (byte)(~(1 << idx & 0x0F));
+                    Data[idx / 8] &= (byte)(~(1 << idx % 8));
             }
         }
 
